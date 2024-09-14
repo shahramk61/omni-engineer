@@ -388,13 +388,28 @@ async def handle_edit_command(default_chat_history, editor_chat_history, filepat
             edited_lines = lines.copy()  # Create a copy to store edited lines
             line_index = 0
 
-            for chunk in client.chat.completions.create(
-                model=EDITOR_MODEL,
-                messages=editor_chat_history,
-                stream=True,
-            ):
-                if chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
+            if not isinstance(editor_chat_history, str):
+                editor_chat_history_string = str(editor_chat_history)
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": editor_chat_history_string
+                        }
+                    ]
+                }
+            ]
+            for chunk in client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            max_tokens=300,
+            messages=messages,
+            system=SYSTEM_PROMPT,
+            stream=True
+        ):
+                if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                    content = chunk.delta.text
                     print_colored(content, end="")
                     buffer += content
 
@@ -402,11 +417,11 @@ async def handle_edit_command(default_chat_history, editor_chat_history, filepat
                         line, buffer = buffer.split('\n', 1)
                         if line_index < len(edited_lines):
                             edited_lines[line_index] = line
-                            print_colored(f"✏️ Updated Line {line_index+1}: {line[:50]}...", Fore.CYAN)
+                            print_colored(f"✏️ Updated Line {line_index + 1}: {line[:50]}...", Fore.CYAN)
                             line_index += 1
                         else:
                             edited_lines.append(line)
-                            print_colored(f"➕ NEW Line {line_index+1}: {line[:50]}...", Fore.YELLOW)
+                            print_colored(f"➕ NEW Line {line_index + 1}: {line[:50]}...", Fore.YELLOW)
                             line_index += 1
 
             result = '\n'.join(edited_lines)
