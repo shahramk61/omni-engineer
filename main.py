@@ -1,5 +1,5 @@
 import os
-from openai import OpenAI
+
 import sys
 from dotenv import load_dotenv
 from colorama import init, Fore, Back, Style
@@ -23,24 +23,30 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.application.current import get_app
+from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+
 
 is_diff_on = True
 
 init(autoreset=True)
 load_dotenv()
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-)
-
-DEFAULT_MODEL = "anthropic/claude-3.5-sonnet"
-EDITOR_MODEL = "google/gemini-pro-1.5"
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# DEFAULT_MODEL = "anthropic/claude-3.5-sonnet"
+# EDITOR_MODEL = "google/gemini-pro-1.5"
+DEFAULT_MODEL = "claude-3.5-sonnet"
+EDITOR_MODEL = "claude-3.5-sonnet"
 # Other common models:
 # "openai/gpt-4o-2024-08-06"
 # "meta-llama/llama-3.1-405b-instruct"
 # "anthropic/claude-3-haiku"
 # "mistralai/mistral-large"
 
+
+def initialize_client():
+    load_dotenv()
+    client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    print(os.getenv("ANTHROPIC_API_KEY"))
+    return client
 SYSTEM_PROMPT = """You are an incredible developer assistant. You have the following traits:
 - You write clean, efficient code
 - You explain concepts with clarity
@@ -214,22 +220,48 @@ def clear_console():
 def print_colored(text, color=Fore.WHITE, style=Style.NORMAL, end='\n'):
     print(f"{style}{color}{text}{Style.RESET_ALL}", end=end)
 
-def get_streaming_response(messages, model):
+
+def get_streaming_response(user_message, model="claude-3-5-sonnet-20240620"):
     try:
-        stream = client.chat.completions.create(
-            model=model,
+        # Ensure user_message is a valid string
+        if not isinstance(user_message, str):
+            user_message = str(user_message)
+
+        # Properly structure the message with 'type' and 'text'
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": user_message
+                    }
+                ]
+            }
+        ]
+
+        # Make a request to the Anthropic API with streaming enabled
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            max_tokens=300,
             messages=messages,
-            stream=True,
+            system=SYSTEM_PROMPT,
+            stream=True
         )
+
+        # Stream the response and capture it
         full_response = ""
-        for chunk in stream:
-            if chunk.choices[0].delta.content is not None:
-                print_colored(chunk.choices[0].delta.content, end="")
-                full_response += chunk.choices[0].delta.content
-        return full_response.strip()
+        for chunk in response:
+            if chunk.type == "content_block_delta":
+                full_response += chunk.delta.text
+                print(chunk.delta.text, end='', flush=True)
+
+        print("\nFull response:", full_response)
+        return full_response
+
     except Exception as e:
-        print_colored(f"Error in streaming response: {e}", Fore.RED)
-        return ""
+        print(f"Error sending prompt: {e}")
+
 
 def read_file_content(filepath):
     try:
@@ -555,7 +587,7 @@ def print_welcome_message():
     console.print(table)
 
     print_colored(
-        "For any other input, the AI will respond to your query or command.",
+        f"For any other input, the AI will respond to your query or command." + os.getenv("OPENROUTER_API_KEY"),
         Fore.YELLOW,
     )
     print_colored(
